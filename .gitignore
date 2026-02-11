@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+pm2-*.log
+
+# Agent state (ephemeral)
+.agent-state/
+.sessions/
+
+# Redis dumps
+dump.rdb
+
+# Cache
+.cache/
+.turbo/
+
+# Build
+dist/
+build/
