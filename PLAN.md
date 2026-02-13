@@ -43,11 +43,15 @@ Autonomous AI agent orchestration system for Shulam. 18 specialized agents ("Apo
 | Dependency | Type | Purpose |
 |------------|------|---------|
 | All repos | Internal | Agents work across repos |
+| facilitator | Internal | Settlement data for reputation scoring |
+| contracts | Internal | Base contract patterns (OpenZeppelin) |
 | Claude API | External | Agent intelligence |
 | GitHub API | External | PR management |
 | Slack API | External | Notifications |
 | Convex | External | Mission Control database |
 | Redis | External | Task queue |
+| OpenZeppelin | External | ERC-5192 (SBT), access control |
+| Foundry | External | Compile, test, deploy identity contracts |
 
 ---
 
@@ -113,6 +117,25 @@ Autonomous AI agent orchestration system for Shulam. 18 specialized agents ("Apo
 - [ ] Audit logging
 - [ ] Rate limiting
 - [ ] Kill switch
+
+### M7: Agent Identity (SBT)
+- [ ] Soul-bound token (SBT) contract for agent identity attestations
+- [ ] `AgentRegistry` contract — register agent address, owner, capabilities
+- [ ] Agent attestation: link on-chain address to verifiable identity (KYC, org, domain)
+- [ ] `isRegisteredAgent(address)` view function for trust verification
+- [ ] Agent capability claims: what services the agent provides (data, compute, etc.)
+- [ ] Revocation: owner can revoke an agent's SBT (compromised key, decommissioned)
+- [ ] Off-chain metadata URI: agent description, supported endpoints, pricing
+
+### M8: Reputation Scoring
+- [ ] `ReputationOracle` contract — tracks agent transaction history on-chain
+- [ ] Reputation score derived from: payment count, volume, success rate, age
+- [ ] `getReputation(address)` returns score (0-1000) and history summary
+- [ ] Score updates on each facilitator settlement (facilitator calls `recordTransaction`)
+- [ ] Decay function: reputation degrades if agent is inactive
+- [ ] Dispute impact: failed escrows and chargebacks reduce reputation
+- [ ] Leaderboard: top agents by reputation (for discovery ranking)
+- [ ] Integration with buyer-sdk/agent `compareProviders()` for trust-weighted selection
 
 ---
 
@@ -457,6 +480,74 @@ Feature: Agent Safety Guardrails
     And logs are searchable
 ```
 
+### Epic 7: Agent Identity
+
+```gherkin
+Feature: Agent Identity via Soul-Bound Tokens
+  As an agent operator
+  I want to register my agent's identity on-chain
+  So that other agents and merchants can verify trustworthiness
+
+  Scenario: Register a new agent
+    Given I own a wallet with an agent private key
+    When I call AgentRegistry.register(agentAddress, metadataUri)
+    Then a non-transferable SBT is minted to the agent address
+    And the metadata URI points to agent capabilities JSON
+    And isRegisteredAgent(agentAddress) returns true
+
+  Scenario: Verify agent identity before accepting payment
+    Given a merchant receives a payment with an agent identity header
+    When the merchant calls isRegisteredAgent(agentAddress)
+    Then the merchant confirms the agent has a valid SBT
+    And can read the agent's metadata (capabilities, owner, domain)
+
+  Scenario: Revoke a compromised agent
+    Given an agent's private key has been compromised
+    When the owner calls AgentRegistry.revoke(agentAddress)
+    Then the agent's SBT is burned
+    And isRegisteredAgent(agentAddress) returns false
+    And future payments from this agent are treated as unverified
+
+  Scenario: Query agent capabilities
+    Given an agent is registered with capabilities ["data-provider", "compute"]
+    When I call AgentRegistry.getCapabilities(agentAddress)
+    Then I receive the list of declared capabilities
+    And the metadata URI for full details
+```
+
+### Epic 8: Reputation Scoring
+
+```gherkin
+Feature: On-Chain Reputation for Agents
+  As a buyer agent
+  I want to check a provider's reputation before paying
+  So that I can avoid unreliable or fraudulent providers
+
+  Scenario: Build reputation through successful transactions
+    Given an agent has completed 100 successful payments
+    When I call ReputationOracle.getReputation(agentAddress)
+    Then I receive a score of 850/1000
+    And a summary: { txCount: 100, volume: "5000.00", successRate: 0.99 }
+
+  Scenario: Reputation degrades on disputes
+    Given an agent has a reputation of 850
+    When 3 escrow disputes are filed against the agent
+    Then the reputation drops to 720
+    And the dispute count is visible in the summary
+
+  Scenario: Reputation decays with inactivity
+    Given an agent has been inactive for 90 days
+    When I check the agent's reputation
+    Then the score includes a decay penalty
+    And the "lastActive" timestamp is visible
+
+  Scenario: Buyer agent uses reputation for provider selection
+    Given I have discovered 3 providers for /api/weather
+    When I call compareProviders(manifests) with reputation weighting
+    Then providers are ranked by: (price * 0.4) + (reputation * 0.6)
+    And the highest-reputation provider may rank above a cheaper one
+```
+
 ---
 
 ## Directory Structure
@@ -475,6 +566,14 @@ souls/
 │   │   ├── config.yaml
 │   │   └── prompts/
 │   └── ... (18 agents)
+├── contracts/                    # On-chain identity & reputation
+│   ├── src/
+│   │   ├── AgentRegistry.sol     # SBT-based agent identity
+│   │   └── ReputationOracle.sol  # Transaction-derived reputation scores
+│   ├── test/
+│   ├── script/
+│   │   └── Deploy.s.sol
+│   └── foundry.toml
 ├── mission-control/
 │   ├── schema.ts
 │   ├── tasks.ts
